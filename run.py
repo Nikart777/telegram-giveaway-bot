@@ -58,7 +58,7 @@ async def start_command(message: Message):
 async def select_club(callback_query: CallbackQuery):
     club = "Новокосино" if callback_query.data == "club_novokosino" else "Алтуфьево"
     user_data[callback_query.message.chat.id]["club"] = club
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         f"✅ Вы выбрали клуб Cyberx {club}.\nТеперь вы можете оставить жалобу.",
         reply_markup=main_menu
     )
@@ -66,9 +66,13 @@ async def select_club(callback_query: CallbackQuery):
 
 @dp.callback_query_handler(lambda c: c.data == "new_complaint")
 async def new_complaint(callback_query: CallbackQuery):
-    await callback_query.message.answer(
-        "📌 Отправьте вашу жалобу:\n1️⃣ Номер ПК\n2️⃣ Описание проблемы\n3️⃣ Обязательно фото",
-        reply_markup=main_menu
+    # Обновляем текст сообщения с инструкцией
+    await callback_query.message.edit_text(
+        "📌 Отправьте вашу жалобу:\n"
+        "1️⃣ Номер ПК\n"
+        "2️⃣ Описание проблемы\n"
+        "3️⃣ Обязательно фото",
+        reply_markup=main_menu  # Кнопка остается на месте
     )
     await callback_query.answer()
 
@@ -93,7 +97,7 @@ async def handle_photo(message: Message):
                 f"📌 {message.caption}",
         parse_mode="Markdown"
     )
-    await message.reply("✅ Ваша жалоба отправлена! Мы все изучим, пофиксим и вернемся с ответом.", reply_markup=main_menu)
+    await message.reply("✅ Ваша жалоба отправлена! Администратор скоро ответит.", reply_markup=main_menu)
 
 @dp.message_handler(content_types=types.ContentType.TEXT)
 async def handle_text(message: Message):
