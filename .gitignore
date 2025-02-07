@@ -1,14 +1,32 @@
 import logging
 import os
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
-from dotenv import load_dotenv
 
-# Загружаем токен и ID админа из .env
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+# Функция загрузки секретов (GitHub Secrets, Docker Secrets, .env)
+def get_secret(name, default=None):
+    """Получает секрет из переменных окружения, Docker Secrets или возвращает значение по умолчанию."""
+    try:
+        # Если запущено в Docker — читаем из /run/secrets/
+        secret_path = f"/run/secrets/{name}"
+        if os.path.exists(secret_path):
+            with open(secret_path, "r") as f:
+                return f.read().strip()
+        # Иначе загружаем из переменных окружения (GitHub Secrets, .env)
+        return os.getenv(name, default)
+    except Exception as e:
+        logging.error(f"Ошибка при загрузке секрета {name}: {e}")
+        return default
+
+# Загружаем токен и ID админа
+BOT_TOKEN = get_secret("BOT_TOKEN")
+ADMIN_ID = int(get_secret("ADMIN_ID", 0))
+
+# Проверяем, загружены ли секреты
+if not BOT_TOKEN or not ADMIN_ID:
+    raise ValueError("❌ Ошибка: BOT_TOKEN или ADMIN_ID не загружены!")
 
 # Настраиваем бота
 bot = Bot(token=BOT_TOKEN)
