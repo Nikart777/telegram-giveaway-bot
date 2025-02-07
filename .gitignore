@@ -1,171 +1,102 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+import logging
+import os
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils import executor
+from dotenv import load_dotenv
 
-# C extensions
-*.so
+# Загружаем токен и ID админа из .env
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# Настраиваем бота
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(bot)
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+# Логирование
+logging.basicConfig(level=logging.INFO)
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+# Инструкция для пользователей
+START_TEXT = (
+    "👋 Привет! Этот бот принимает жалобы на ПК.\n\n"
+    "📌 Чтобы оставить жалобу, отправьте:\n"
+    "1️⃣ Номер ПК\n"
+    "2️⃣ Описание проблемы\n"
+    "3️⃣ Обязательно фото ошибки\n\n"
+    "⚠️ *Перед отправкой подтвердите, что администратор вас не помог и бездействовал.*"
+)
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
+# Клавиатура с подтверждением
+confirm_keyboard = InlineKeyboardMarkup(row_width=2)
+confirm_keyboard.add(
+    InlineKeyboardButton("✅ Да, админ не помог", callback_data="confirm"),
+    InlineKeyboardButton("❌ Отмена", callback_data="cancel")
+)
 
-# Translations
-*.mo
-*.pot
+# Обработчик команды /start
+@dp.message_handler(commands=['start'])
+async def start_command(message: Message):
+    await message.answer(START_TEXT)
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+# Словарь для хранения сообщений перед подтверждением
+pending_reports = {}
 
-# Flask stuff:
-instance/
-.webassets-cache
+# Обработчик сообщений с фото
+@dp.message_handler(content_types=types.ContentType.PHOTO)
+async def handle_photo(message: Message):
+    if not message.caption:
+        await message.reply("❌ Пожалуйста, добавьте описание проблемы вместе с фото.")
+        return
 
-# Scrapy stuff:
-.scrapy
+    # Сохраняем жалобу во временный список
+    pending_reports[message.chat.id] = {
+        "photo": message.photo[-1].file_id,
+        "text": message.caption,
+        "user": message.from_user
+    }
 
-# Sphinx documentation
-docs/_build/
+    # Запрашиваем подтверждение у пользователя
+    await message.reply(
+        "⚠️ Подтвердите, что вы уже обращались к администратору, но он не решил проблему.",
+        reply_markup=confirm_keyboard
+    )
 
-# PyBuilder
-.pybuilder/
-target/
+# Обработчик кнопок
+@dp.callback_query_handler(lambda c: c.data in ["confirm", "cancel"])
+async def process_callback(callback_query: types.CallbackQuery):
+    user_id = callback_query.message.chat.id
 
-# Jupyter Notebook
-.ipynb_checkpoints
+    if callback_query.data == "confirm":
+        # Проверяем, есть ли жалоба в списке
+        if user_id in pending_reports:
+            report = pending_reports.pop(user_id)
 
-# IPython
-profile_default/
-ipython_config.py
+            # Отправляем жалобу админу
+            await bot.send_photo(
+                chat_id=ADMIN_ID,
+                photo=report["photo"],
+                caption=f"🔴 *Новая жалоба*\n\n"
+                        f"👨‍💻 От: @{report['user'].username} (ID: {report['user'].id})\n"
+                        f"📌 {report['text']}\n\n"
+                        f"⚠️ Пользователь подтвердил, что администратор бездействовал.",
+                parse_mode="Markdown"
+            )
+            await callback_query.message.answer("✅ Ваша жалоба отправлена! Администратор скоро ответит.")
+        else:
+            await callback_query.message.answer("❌ Ошибка: жалоба не найдена.")
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+    elif callback_query.data == "cancel":
+        # Пользователь отменил отправку
+        pending_reports.pop(user_id, None)
+        await callback_query.message.answer("🚫 Жалоба отменена.")
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+    await callback_query.answer()
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+# Обработчик текстовых сообщений без фото
+@dp.message_handler(content_types=types.ContentType.TEXT)
+async def handle_text(message: Message):
+    await message.reply("❌ Жалоба должна содержать фото. Пожалуйста, прикрепите фото проблемы.")
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/latest/usage/project/#working-with-version-control
-.pdm.toml
-.pdm-python
-.pdm-build/
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
-
-# PyPI configuration file
-.pypirc
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
